@@ -1,9 +1,7 @@
-using System.Collections;
 using System;
+using System.IO;
 using Windows.Devices.Usb;
-using Windows.Storage.Streams;
 using System.Text;
-using System.Security.Cryptography;
 
 namespace WinUSB_WinFormsApp
 {
@@ -47,58 +45,38 @@ namespace WinUSB_WinFormsApp
 
         private async Task BulkWrite(byte[] dataBytes)
         {
-            UInt32 bytesWritten = 0;
-
             UsbBulkOutPipe writePipe = usbDevice.DefaultInterface.BulkOutPipes[0];
             writePipe.WriteOptions |= UsbWriteOptions.ShortPacketTerminate;
 
-            var stream = writePipe.OutputStream;
-
-            DataWriter writer = new DataWriter(stream);
-
-            writer.WriteBytes(dataBytes);
-
             try
             {
-                bytesWritten = await writer.StoreAsync();
+                Stream outputStream = writePipe.OutputStream.AsStreamForWrite();
+                await outputStream.WriteAsync(dataBytes, 0, dataBytes.Length);
+                await outputStream.FlushAsync();
             }
             catch (Exception exception)
             {
-                Console.Write(exception.Message.ToString());
-            }
-            finally
-            {
-                Console.Write("Data written: " + bytesWritten + " bytes.");
+                Console.Write(exception.Message);
             }
         }
 
 
         private async Task<byte[]> BulkRead()
         {
-            UInt32 bytesRead = 0;
-            byte[] bytes;
-
             UsbBulkInPipe readPipe = usbDevice.DefaultInterface.BulkInPipes[0];
-            var stream = readPipe.InputStream;
-            DataReader reader = new DataReader(stream);
+            byte[] buffer = new byte[readPipe.EndpointDescriptor.MaxPacketSize];
 
             try
             {
-                bytesRead = await reader.LoadAsync(readPipe.EndpointDescriptor.MaxPacketSize);
+                Stream inputStream = readPipe.InputStream.AsStreamForRead();
+                int bytesRead = await inputStream.ReadAsync(buffer, 0, buffer.Length);
+                return buffer[..bytesRead].ToArray();
             }
             catch (Exception exception)
             {
-                Console.Write(exception.Message.ToString());
+                Console.Write(exception.Message);
+                return Array.Empty<byte>();
             }
-            finally
-            {
-                IBuffer buffer = reader.ReadBuffer(bytesRead);
-                var dataReader = DataReader.FromBuffer(buffer);
-                bytes = new byte[bytesRead];
-                dataReader.ReadBytes(bytes);                
-            }
-
-            return bytes;
         }
 
         private async void transferButton_Click(object sender, EventArgs e)
